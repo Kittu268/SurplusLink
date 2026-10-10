@@ -5,8 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SurplusLink</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; color: #333; }
-        .container { max-width: 1000px; margin: auto; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 0; color: #333; }
+        .navbar { background: #27ae60; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .navbar h1 { margin: 0; font-size: 1.5em; }
+        .nav-controls { display: flex; align-items: center; gap: 15px; }
+        .profile-badge { background: #2ecc71; padding: 8px 15px; border-radius: 20px; border: 1px solid #fff; font-size: 0.9em; font-weight: bold; }
+        .container { max-width: 1000px; margin: 20px auto; padding: 0 20px; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
         h1, h2, h3 { color: #2c3e50; margin-top: 0; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
@@ -23,16 +27,27 @@
 </head>
 <body>
 
-<div class="container">
-    <h1>🍲 SurplusLink: Food Rescue</h1>
+<div class="navbar">
+    <h1>🍲 SurplusLink</h1>
+    <div class="nav-controls">
+        <div id="activeProfileBadge" class="profile-badge">Loading...</div>
+        <div>
+            <select id="role-select" onchange="populateIds()">
+                <option value="donor">Donors</option>
+                <option value="volunteer">Volunteers</option>
+            </select>
+            <select id="id-select" onchange="switchRole()"></select>
+        </div>
+    </div>
+</div>
 
-    <!-- CLOCK & DASHBOARD CARD -->
+<div class="container">
     <div class="card grid">
         <div>
             <h3>⏱️ System Clock</h3>
             <h2 id="clock-display" style="color: #e67e22;">Loading...</h2>
             <input type="datetime-local" id="new-clock-input">
-            <button onclick="advanceClock()">Advance Clock</button>
+            <button onclick="advanceClock()">Update Clock</button>
         </div>
         <div>
             <h3>📊 Live Dashboard</h3>
@@ -40,17 +55,6 @@
         </div>
     </div>
 
-    <!-- ROLE SWITCHER CARD -->
-    <div class="card">
-        <h3>👤 Act As:</h3>
-        <select id="role-select" onchange="switchRole()">
-            <option value="donor">Donor</option>
-            <option value="volunteer">Volunteer</option>
-        </select>
-        <select id="id-select" onchange="loadView()"></select>
-    </div>
-
-    <!-- DONOR VIEW -->
     <div id="donor-view" class="card hidden">
         <div class="grid">
             <div>
@@ -69,12 +73,10 @@
         </div>
     </div>
 
-    <!-- VOLUNTEER VIEW -->
     <div id="volunteer-view" class="card hidden">
         <h3>🚚 Available Donations in My Zone</h3>
         <div id="vol-avail-list"></div>
     </div>
-
 </div>
 
 <script>
@@ -82,9 +84,8 @@
     let currentRole = 'donor';
     let currentId = 'D1';
 
-    // Lists from seed.json
-    const donorsList = ['D1', 'D2', 'D3', 'D4', 'D5'];
-    const volsList = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
+    const donorsData = { 'D1': 'NORTH', 'D2': 'SOUTH', 'D3': 'EAST', 'D4': 'WEST', 'D5': 'NORTH' };
+    const volsData = { 'V1': 'NORTH, EAST', 'V2': 'NORTH', 'V3': 'SOUTH', 'V4': 'WEST', 'V5': 'EAST', 'V6': 'WEST, NORTH' };
 
     async function init() {
         populateIds();
@@ -95,14 +96,27 @@
         currentRole = document.getElementById('role-select').value;
         const idSelect = document.getElementById('id-select');
         idSelect.innerHTML = '';
-        const list = currentRole === 'donor' ? donorsList : volsList;
-        list.forEach(id => idSelect.innerHTML += `<option value="${id}">${id}</option>`);
+        
+        if (currentRole === 'donor') {
+            Object.keys(donorsData).forEach(id => idSelect.innerHTML += `<option value="${id}">${id}</option>`);
+        } else {
+            Object.keys(volsData).forEach(id => idSelect.innerHTML += `<option value="${id}">${id}</option>`);
+        }
         switchRole();
     }
 
     function switchRole() {
         currentRole = document.getElementById('role-select').value;
         currentId = document.getElementById('id-select').value;
+        
+        const badge = document.getElementById('activeProfileBadge');
+        if (currentRole === 'donor') {
+            badge.innerText = `🏢 Donor ${currentId} | Zone: ${donorsData[currentId]}`;
+            badge.style.background = '#e67e22';
+        } else {
+            badge.innerText = `🚗 Volunteer ${currentId} | Zones: ${volsData[currentId]}`;
+            badge.style.background = '#2980b9';
+        }
         
         document.getElementById('donor-view').classList.add('hidden');
         document.getElementById('volunteer-view').classList.add('hidden');
@@ -138,10 +152,7 @@
         }).then(r => r.json());
         
         if (res.error) alert(res.error);
-        else { 
-            alert(`Clock advanced! ${res.claims_marked_missed} claims marked missed.`); 
-            init(); loadView(); 
-        }
+        else { init(); loadView(); }
     }
 
     async function loadView() {
@@ -151,9 +162,12 @@
             let html = '<ul>';
             (res.donations || []).forEach(d => {
                 let status = d.cancelled == 1 ? "🚫 CANCELLED" : "🟢 ACTIVE";
-                html += `<li><strong>${d.description}</strong> (${d.quantity_kg}kg)<br>
-                Status: ${status} | Window: ${d.pickup_from} to ${d.pickup_until}<br>
-                <button class="btn-danger" style="margin-top:5px;" onclick="cancelDonation('${d.id}')">Cancel</button></li>`;
+                html += `<li>
+                    <div style="display:flex; justify-content:space-between;">
+                        <div><strong>${d.description}</strong> (${d.quantity_kg}kg)<br>Status: ${status} | Window: ${d.pickup_from} to ${d.pickup_until}</div>
+                        <div><button class="btn-danger" onclick="cancelDonation('${d.id}')">Cancel</button></div>
+                    </div>
+                </li>`;
             });
             document.getElementById('donor-list').innerHTML = html + '</ul>';
         } else {
@@ -182,14 +196,14 @@
         const res = await fetch(`${API}/donations.php`, {
             method: 'POST', body: JSON.stringify(body), headers:{'Content-Type':'application/json'}
         }).then(r => r.json());
-        if(res.error) alert(res.error); else { alert("Donation Posted!"); init(); loadView(); }
+        if(res.error) alert(res.error); else { document.getElementById('d-desc').value = ''; init(); loadView(); }
     }
 
     async function cancelDonation(donId) {
         const res = await fetch(`${API}/donation_cancel.php`, {
             method: 'POST', body: JSON.stringify({donation_id: donId}), headers:{'Content-Type':'application/json'}
         }).then(r => r.json());
-        if(res.error) alert(res.error); else { alert("Cancelled!"); init(); loadView(); }
+        if(res.error) alert(res.error); else { init(); loadView(); }
     }
 
     async function claimDonation(donId) {
@@ -205,7 +219,7 @@
         
         if(res.violations) alert("Claim rejected:\n- " + res.violations.join('\n- '));
         else if (res.error) alert(res.error);
-        else { alert("Claim Successful!"); init(); loadView(); }
+        else { init(); loadView(); }
     }
 
     window.onload = init;
