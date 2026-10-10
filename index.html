@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SurplusLink</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 1000px; margin: auto; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h1, h2, h3 { color: #2c3e50; margin-top: 0; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        button { background: #3498db; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2980b9; }
+        .btn-danger { background: #e74c3c; } .btn-danger:hover { background: #c0392b; }
+        .btn-success { background: #2ecc71; } .btn-success:hover { background: #27ae60; }
+        input, select { padding: 8px; margin: 5px 0; border: 1px solid #ccc; border-radius: 4px; }
+        .stats-box { background: #ecf0f1; padding: 15px; border-radius: 6px; font-size: 1.1em; line-height: 1.6; }
+        .hidden { display: none; }
+        ul { list-style-type: none; padding: 0; }
+        li { background: #fdfdfd; border: 1px solid #eee; margin-bottom: 10px; padding: 15px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🍲 SurplusLink: Food Rescue</h1>
+
+    <!-- CLOCK & DASHBOARD CARD -->
+    <div class="card grid">
+        <div>
+            <h3>⏱️ System Clock</h3>
+            <h2 id="clock-display" style="color: #e67e22;">Loading...</h2>
+            <input type="datetime-local" id="new-clock-input">
+            <button onclick="advanceClock()">Advance Clock</button>
+        </div>
+        <div>
+            <h3>📊 Live Dashboard</h3>
+            <div class="stats-box" id="dashboard-stats">Loading stats...</div>
+        </div>
+    </div>
+
+    <!-- ROLE SWITCHER CARD -->
+    <div class="card">
+        <h3>👤 Act As:</h3>
+        <select id="role-select" onchange="switchRole()">
+            <option value="donor">Donor</option>
+            <option value="volunteer">Volunteer</option>
+        </select>
+        <select id="id-select" onchange="loadView()"></select>
+    </div>
+
+    <!-- DONOR VIEW -->
+    <div id="donor-view" class="card hidden">
+        <div class="grid">
+            <div>
+                <h3>➕ Post New Donation</h3>
+                <input type="text" id="d-desc" placeholder="Food Description (e.g. Rice)" style="width: 90%;"><br>
+                <input type="number" id="d-kg" placeholder="Quantity (kg)" min="1" style="width: 90%;"><br>
+                <small>Pickup Window:</small><br>
+                <input type="datetime-local" id="d-from" title="From"> to 
+                <input type="datetime-local" id="d-until" title="Until"><br>
+                <button class="btn-success" onclick="postDonation()" style="margin-top: 10px;">Post Donation</button>
+            </div>
+            <div>
+                <h3>📋 My Posted Donations</h3>
+                <div id="donor-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VOLUNTEER VIEW -->
+    <div id="volunteer-view" class="card hidden">
+        <h3>🚚 Available Donations in My Zone</h3>
+        <div id="vol-avail-list"></div>
+    </div>
+
+</div>
+
+<script>
+    const API = 'http://localhost:8080/SurplusLink/api';
+    let currentRole = 'donor';
+    let currentId = 'D1';
+
+    // Lists from seed.json
+    const donorsList = ['D1', 'D2', 'D3', 'D4', 'D5'];
+    const volsList = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
+
+    async function init() {
+        populateIds();
+        await loadDashboard();
+    }
+
+    function populateIds() {
+        currentRole = document.getElementById('role-select').value;
+        const idSelect = document.getElementById('id-select');
+        idSelect.innerHTML = '';
+        const list = currentRole === 'donor' ? donorsList : volsList;
+        list.forEach(id => idSelect.innerHTML += `<option value="${id}">${id}</option>`);
+        switchRole();
+    }
+
+    function switchRole() {
+        currentRole = document.getElementById('role-select').value;
+        currentId = document.getElementById('id-select').value;
+        
+        document.getElementById('donor-view').classList.add('hidden');
+        document.getElementById('volunteer-view').classList.add('hidden');
+        document.getElementById(`${currentRole}-view`).classList.remove('hidden');
+        loadView();
+    }
+
+    async function loadDashboard() {
+        try {
+            const res = await fetch(`${API}/dashboard.php`).then(r => r.json());
+            if (res.current_clock) document.getElementById('clock-display').innerText = res.current_clock;
+            
+            if (res.global_stats) {
+                let s = res.global_stats;
+                document.getElementById('dashboard-stats').innerHTML = `
+                    <strong>Listed:</strong> ${s.Listed} kg<br>
+                    <strong>Collected:</strong> ${s.Collected} kg | <strong>Missed:</strong> ${s.Missed} kg | <strong>Wasted:</strong> ${s.Wasted} kg<br>
+                    <strong>In Progress:</strong> ${s.In_progress} kg | <strong>Still Open:</strong> ${s.Still_open} kg<br>
+                    <hr>
+                    <span style="color: ${s.Math_Is_Valid ? 'green' : 'red'};">
+                        Math Valid (Listed = Sum of others): ${s.Math_Is_Valid}
+                    </span>
+                `;
+            }
+        } catch(e) { console.error("Dashboard error", e); }
+    }
+
+    async function advanceClock() {
+        const t = document.getElementById('new-clock-input').value;
+        if(!t) return alert("Please select a time.");
+        const res = await fetch(`${API}/clock.php`, {
+            method: 'POST', body: JSON.stringify({new_time: t}), headers:{'Content-Type':'application/json'}
+        }).then(r => r.json());
+        
+        if (res.error) alert(res.error);
+        else { 
+            alert(`Clock advanced! ${res.claims_marked_missed} claims marked missed.`); 
+            init(); loadView(); 
+        }
+    }
+
+    async function loadView() {
+        currentId = document.getElementById('id-select').value;
+        if(currentRole === 'donor') {
+            const res = await fetch(`${API}/donations.php?role=donor&id=${currentId}`).then(r => r.json());
+            let html = '<ul>';
+            (res.donations || []).forEach(d => {
+                let status = d.cancelled == 1 ? "🚫 CANCELLED" : "🟢 ACTIVE";
+                html += `<li><strong>${d.description}</strong> (${d.quantity_kg}kg)<br>
+                Status: ${status} | Window: ${d.pickup_from} to ${d.pickup_until}<br>
+                <button class="btn-danger" style="margin-top:5px;" onclick="cancelDonation('${d.id}')">Cancel</button></li>`;
+            });
+            document.getElementById('donor-list').innerHTML = html + '</ul>';
+        } else {
+            const res = await fetch(`${API}/donations.php?role=volunteer&id=${currentId}`).then(r => r.json());
+            let html = '<ul>';
+            if(!res.donations || res.donations.length === 0) html += `<i>No active donations in your zone right now.</i>`;
+            (res.donations || []).forEach(d => {
+                html += `<li><strong>${d.description}</strong> - ${d.remaining_kg}kg available<br>
+                Pickup window: ${d.pickup_from} to ${d.pickup_until}<br><br>
+                Claim <input type="number" id="claim-kg-${d.id}" max="${d.remaining_kg}" min="1" value="1" style="width: 50px;"> kg 
+                at <input type="datetime-local" id="claim-time-${d.id}">
+                <button class="btn-success" onclick="claimDonation('${d.id}')">Submit Claim</button></li>`;
+            });
+            document.getElementById('vol-avail-list').innerHTML = html + '</ul>';
+        }
+    }
+
+    async function postDonation() {
+        const body = {
+            donor_id: currentId,
+            description: document.getElementById('d-desc').value,
+            quantity_kg: parseInt(document.getElementById('d-kg').value),
+            pickup_from: document.getElementById('d-from').value,
+            pickup_until: document.getElementById('d-until').value
+        };
+        const res = await fetch(`${API}/donations.php`, {
+            method: 'POST', body: JSON.stringify(body), headers:{'Content-Type':'application/json'}
+        }).then(r => r.json());
+        if(res.error) alert(res.error); else { alert("Donation Posted!"); init(); loadView(); }
+    }
+
+    async function cancelDonation(donId) {
+        const res = await fetch(`${API}/donation_cancel.php`, {
+            method: 'POST', body: JSON.stringify({donation_id: donId}), headers:{'Content-Type':'application/json'}
+        }).then(r => r.json());
+        if(res.error) alert(res.error); else { alert("Cancelled!"); init(); loadView(); }
+    }
+
+    async function claimDonation(donId) {
+        const body = {
+            donation_id: donId,
+            volunteer_id: currentId,
+            quantity_kg: parseInt(document.getElementById(`claim-kg-${donId}`).value),
+            planned_at: document.getElementById(`claim-time-${donId}`).value
+        };
+        const res = await fetch(`${API}/claim.php`, {
+            method: 'POST', body: JSON.stringify(body), headers:{'Content-Type':'application/json'}
+        }).then(r => r.json());
+        
+        if(res.violations) alert("Claim rejected:\n- " + res.violations.join('\n- '));
+        else if (res.error) alert(res.error);
+        else { alert("Claim Successful!"); init(); loadView(); }
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
